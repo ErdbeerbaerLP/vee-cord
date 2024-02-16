@@ -1,11 +1,13 @@
 #!/bin/bash
 
-VERSION=0.5.49
+VERSION=0.0.1
 HDIR=$(dirname "$0")
 DEBUG=0
-INFOMAIL=1
-# INFOMAIL 1=ALWAYS (DEFAULT), 2=WARN, 3=ERROR
+INFOSEND=1
+INFOPING=2
 SENDM=0
+PING=0
+PINGID=0
 sleep 1
 
 if [ ! $SLEEP ]; then
@@ -14,16 +16,16 @@ fi
 
 if [[ $EUID -ne 0 ]]; then
  echo "This script must be run as root" 
- logger -t vee-mail "This script must be run as root"
+ logger -t vee-cord "This script must be run as root"
  exit 1
 fi
 
-. $HDIR/vee-mail.config
+. $HDIR/vee-cord.config
 
 STARTEDFROM=$(ps -p $PPID -hco cmd)
 if [ "$1" == "--bg" ]; then
  if [ "$STARTEDFROM" == "veeamjobman" ]; then
-  logger -t vee-mail "waiting for 30 seconds"
+  logger -t vee-cord "waiting for 30 seconds"
   sleep $SLEEP
  fi
 fi
@@ -31,7 +33,7 @@ fi
 VC=$(which veeamconfig)
 if [ ! "$VC" ]; then
  echo "No Veeam Agent for Linux installed!"
- logger -t vee-mail "No Veeam Agent for Linux installed!"
+ logger -t vee-cord "No Veeam Agent for Linux installed!"
  exit
 fi
 
@@ -49,7 +51,7 @@ if [ "$SQLITE" != "/usr/bin/sqlite3" ] && [ "$SQLITE" != "/bin/sqlite3" ]; then
 fi
 
 CURL=$(which curl)
-if [ $USECURL -eq 1 ] && [ ! "$CURL" ]; then
+if [ ! "$CURL" ]; then
  if [ "$YUM" ]; then
   yum install -y curl
  else
@@ -57,23 +59,14 @@ if [ $USECURL -eq 1 ] && [ ! "$CURL" ]; then
  fi
 fi
 
-SENDMAIL=$(which sendmail)
-if [ $USECURL -ne 1 ] &&[ "$SENDMAIL" != "/usr/sbin/sendmail" ] && [ "$SENDMAIL" != "/bin/sendmail" ]; then
- if [ "$YUM" ]; then
-  yum install -y sendmail
- else
-  apt-get install -y sendmail
- fi
-fi
-
 if [ $SKIPVERSIONCHECK -ne 1 ]; then
  if [ "$CURL" ]; then
-  AKTVERSION=$($CURL -m2 -f -s https://raw.githubusercontent.com/grufocom/vee-mail/master/vee-mail.sh --stderr - | grep "^VERSION=" | awk -F'=' '{print $2}')
+  AKTVERSION=$($CURL -m2 -f -s https://raw.githubusercontent.com/ErdbeerbaerLP/vee-cord/master/vee-cord.sh --stderr - | grep "^VERSION=" | awk -F'=' '{print $2}')
   if [ "$AKTVERSION" ]; then
    HIGHESTVERSION=$(echo -e "$VERSION\n$AKTVERSION" | sort -rV | head -n1)
    if [ "$VERSION" != "$HIGHESTVERSION" ]; then
-    logger -t vee-mail "new Vee-Mail version $AKTVERSION available"
-    AKTVERSION="\(new Vee-Mail version $AKTVERSION available\)"
+    logger -t vee-cord "new Vee-Cord version $AKTVERSION available"
+    AKTVERSION="\(new Vee-Cord version $AKTVERSION available\)"
    else
     AKTVERSION=""
    fi
@@ -111,7 +104,7 @@ JOBNAME=$(echo $SESSDATA|awk -F'|' '{print $6}')
 
 if [ $DEBUG -gt 0 ]; then
  echo -e -n "STARTTIME: $STARTTIME, ENDTIME: $ENDTIME, STATE: $STATE, JOBID: $JOBID, JOBNAME: $JOBNAME\nDETAILS: $DETAILS\n"
- logger -t vee-mail "STARTTIME: $STARTTIME, ENDTIME: $ENDTIME, STATE: $STATE, JOBID: $JOBID, JOBNAME: $JOBNAME\nDETAILS: $DETAILS"
+ logger -t vee-cord "STARTTIME: $STARTTIME, ENDTIME: $ENDTIME, STATE: $STATE, JOBID: $JOBID, JOBNAME: $JOBNAME\nDETAILS: $DETAILS"
 fi
 
 if [ "$JOBID" ]; then
@@ -122,7 +115,7 @@ if [ "$JOBID" ]; then
  DOMAIN=$(echo $RAWTARGET|awk -F'Domain="' '{print $2}'|awk -F'"' '{print $1}')
  if [ $DEBUG -gt 0 ]; then
   echo -e -n "TARGET: $TARGET, FST: $FST, LOGIN: $LOGIN, DOMAIN: $DOMAIN\n"
-  logger -t vee-mail "TARGET: $TARGET, FST: $FST, LOGIN: $LOGIN, DOMAIN: $DOMAIN"
+  logger -t vee-cord "TARGET: $TARGET, FST: $FST, LOGIN: $LOGIN, DOMAIN: $DOMAIN"
  fi
  if [ ! "$TARGET" ]; then
   TARGET=$(echo $RAWTARGET|awk -F'DeviceMountPoint="' '{print $2}'|awk -F'"' '{print $1}')
@@ -173,16 +166,22 @@ fi
 
 if [ "$STATE" == "6" ]; then
  SUCCESS=1; BGCOLOR="#00B050"; STAT="Success";
- if [ $INFOMAIL -eq 1 ]; then
+ if [ $INFOSEND -eq 1 ]; then
   SENDM=1
+ fi
+ if [ $INFOPING -eq 1 ]; then
+  PING=1
  fi
 else
  SUCCESS=0;
 fi
 if [ "$STATE" == "7" ]; then
  ERROR=1; BGCOLOR="#fb9895"; STAT="Failed";
- if [ $INFOMAIL -ge 1 ]; then
+ if [ $INFOSEND -ge 1 ]; then
   SENDM=1
+ fi
+ if [ $INFOPING -ge 1 ]; then
+  PING=1
  fi
 else
  ERROR=0;
@@ -191,6 +190,9 @@ if [ "$STATE" == "9" ]; then
  WARNING=1; BGCOLOR="#fbcb95"; STAT="Warning";
  if [ $INFOMAIL -le 2 ]; then
   SENDM=1
+ fi
+ if [ $INFOPING -le 2 ]; then
+  PING=1
  fi
 else
  WARNING=0;
@@ -203,7 +205,7 @@ READ=$(awk "BEGIN {printf \"%.1f\n\", $READ/1024/1024/1024}")" GB"
 TRANSFERRED=$(echo $DETAILS|awk -F'transferred_data_size_bytes="' '{print $2}'|awk -F'"' '{print $1}')
 if [ $DEBUG -gt 0 ]; then
  echo -e -n "PROCESSED: $PROCESSED, READ: $READ, TRANSFERRED: $TRANSFERRED\n"
- logger -t vee-mail "PROCESSED: $PROCESSED, READ: $READ, TRANSFERRED: $TRANSFERRED"
+ logger -t vee-cord "PROCESSED: $PROCESSED, READ: $READ, TRANSFERRED: $TRANSFERRED"
 fi
 if [ $TRANSFERRED -gt 1073741824 ]; then
  TRANSFERRED=$(awk "BEGIN {printf \"%.1f\n\", $TRANSFERRED/1024/1024/1024}")" GB"
@@ -218,7 +220,7 @@ NETLOAD=$(echo $DETAILS|awk -F'network_load="' '{print $2}'|awk -F'"' '{print $1
 TARGETLOAD=$(echo $DETAILS|awk -F'target_write_load="' '{print $2}'|awk -F'"' '{print $1}')
 if [ $DEBUG -gt 0 ]; then
  echo -e -n "SPEED: $SPEED, SOURCELOAD: $SOURCELOAD, NETLOAD: $NETLOAD, TARGETLOAD: $TARGETLOAD\n"
- logger -t vee-mail "SPEED: $SPEED, SOURCELOAD: $SOURCELOAD, NETLOAD: $NETLOAD, TARGETLOAD: $TARGETLOAD"
+ logger -t vee-cord "SPEED: $SPEED, SOURCELOAD: $SOURCELOAD, NETLOAD: $NETLOAD, TARGETLOAD: $TARGETLOAD"
 fi
 
 if [ "$SOURCELOAD" -gt "$SOURCEPLOAD" ] && [ "$SOURCELOAD" -gt "$NETLOAD" ] && [ "$SOURCELOAD" -gt "$TARGETLOAD" ]; then
@@ -243,19 +245,19 @@ ETIME=$(date -d "@$ENDTIME" +"%H:%M:%S")
 
 if [ $DEBUG -gt 0 ]; then
  echo -e -n "DURATION: $DURATION, START: $START, END: $END, STIME: $STIME, ETIME: $ETIME\n"
- logger -t vee-mail "DURATION: $DURATION, START: $START, END: $END, STIME: $STIME, ETIME: $ETIME"
+ logger -t vee-cord "DURATION: $DURATION, START: $START, END: $END, STIME: $STIME, ETIME: $ETIME"
 fi
 
 # get session error
-ERRLOG=$($VC session log --id $SESSID|egrep 'error|warn'|sed ':a;N;$!ba;s/\n/<br>/g'|sed -e "s/ /\&nbsp;/g")
-ERRLOG=$(printf "%q" $ERRLOG)
+ERRLOG=$($VC session log --id $SESSID|egrep 'error|warn')
+#ERRLOG=$(printf "%q" $ERRLOG)
 if [ "$ERRLOG" == "''" ]; then
  ERRLOG=""
 fi
 
 if [ $DEBUG -gt 0 ]; then
  echo -e -n "ERRLOG: $ERRLOG\n"
- logger -t vee-mail "ERRLOG: $ERRLOG"
+ logger -t vee-cord "ERRLOG: $ERRLOG"
 fi
 
 # create temp file for mail
@@ -264,43 +266,41 @@ TEMPFILE=$(mktemp)
 # uppercase hostname
 HN=${HOSTNAME^^}
 
-# build email
-SUBJECT=$(echo "[$STAT] $HN - $START"|base64 -w0)
-echo -en "From: $EMAILFROM
-To: $EMAILTO
-Subject: =?UTF-8?B?$SUBJECT?=
-MIME-Version: 1.0
-Content-Type: text/html; charset=utf-8
-Content-Transfer-Encoding: 8bit\r
-\r
-" > $TEMPFILE
+# build json
 
-# debug output
-if [ $DEBUG -gt 0 ]; then
- echo -e -n "HN: $HN\nSTAT: $STAT\nBGCOLOR: $BGCOLOR\nSTART: $START\nSUCCESS: $SUCCESS\nERROR: $ERROR\nWARNING: $WARNING\nSTIME: $STIME\nETIME: $ETIME\nREAD: $READ\nTRANSFERRED: $TRANSFERRED\nDURATION: $DURATION\nPROCESSED: $PROCESSED\nBOTTLENECK: $BOTTLENECK\nERRLOG: $ERRLOG\nSPEED: $SPEED\nTARGET: $TARGET\nFST: $FST\nLOGIN: $LOGIN\nDOMAIN: $DOMAIN\n DEVUSEP: $DEVUSEP\n"
- logger -t vee-mail "HN: $HN; STAT: $STAT; BGCOLOR: $BGCOLOR; START: $START; SUCCESS: $SUCCESS; ERROR: $ERROR; WARNING: $WARNING; STIME: $STIME; ETIME: $ETIME; READ: $READ; TRANSFERRED: $TRANSFERRED; DURATION: $DURATION; PROCESSED: $PROCESSED; BOTTLENECK: $BOTTLENECK; ERRLOG: $ERRLOG; SPEED: $SPEED; TARGET: $TARGET; FST: $FST; LOGIN: $LOGIN; DOMAIN: $DOMAIN;  DEVUSEP: $DEVUSEP"
+jsonString="{";
+jsonString+=" \"username\": \"$WEBHOOKNAME\","
+jsonString+="\"avatar_url\": \"$WEBHOOKAVATAR\","
+if [ $PING -eq 1 ] && [ $PINGID -gt 0 ]; then
+jsonString+="\"content\":\"<@$PINGID>\",";
+else
+jsonString+="\"content\":null,";
 fi
-
-sed -e "s/XXXJOBNAMEXXX/$JOBNAME/g" -e "s/XXXHOSTNAMEXXX/$HN/g" -e "s/XXXSTATXXX/$STAT/g" -e "s/XXXBGCOLORXXX/$BGCOLOR/g" -e "s/XXXBACKUPDATETIMEXXX/$START/g" -e "s/XXXSUCCESSXXX/$SUCCESS/g" -e "s/XXXERRORXXX/$ERROR/g" -e "s/XXXWARNINGXXX/$WARNING/g" -e "s/XXXSTARTXXX/$STIME/g" -e "s/XXXENDXXX/$ETIME/g" -e "s/XXXDATAREADXXX/$READ/g" -e "s/XXXREADXXX/$READ/g" -e "s/XXXTRANSFERREDXXX/$TRANSFERRED/g" -e "s/XXXDURATIONXXX/$DURATION/g" -e "s/XXXSTATUSXXX/$STAT/g" -e "s/XXXTOTALSIZEXXX/$PROCESSED/g" -e "s/XXXBOTTLENECKXXX/$BOTTLENECK/g" -e "s|XXXDETAILSXXX|$ERRLOG|g" -e "s/XXXRATEXXX/$SPEED MB\/s/g" -e "s/XXXBACKUPSIZEXXX/$TRANSFERRED/g" -e "s/XXXAGENTXXX/$AGENT/g" -e "s|XXXTARGETXXX|$TARGET|g" -e "s|XXXFSTXXX|$FST|g" -e "s|XXXLOGINXXX|$LOGIN|g" -e "s|XXXDOMAINXXX|$DOMAIN|g" -e "s|XXXVERSIONXXX|$VERSION|g" -e "s|XXXAKTVERSIONXXX|$AKTVERSION|g" -e "s|XXXDISKSIZEXXX|$DEVSIZE|g" -e "s|XXXDISKUSEDXXX|$DEVUSED|g" -e "s|XXXDISKAVAILXXX|$DEVAVAIL|g" -e "s|XXXDISKUSEPXXX|$DEVUSEP|g" $HTMLTEMPLATE >> $TEMPFILE 
-# send email
-if [ $SENDM -eq 1 ]; then
- if [ $USECURL -eq 1 ]; then
-
-  CURLPARAMS=""
-
-  if [ $CURLSTARTTLS -eq 1 ]; then
-   CURLPARAMS=" $CURLPARAMS --ssl-reqd"
-  fi
-
-  if [ $CURLINSECURE -eq 1 ]; then
-   CURLPARAMS=" $CURLPARAMS --insecure"
-  fi
-
-  $CURL -sS --url $CURLSMTPSERVER --mail-from $EMAILFROM --mail-rcpt $EMAILTO --upload-file $TEMPFILE ${CURLUSERNAME:+-u $CURLUSERNAME:"$CURLPASSWORD"} $CURLPARAMS
- else
-  cat $TEMPFILE | $SENDMAIL -f $EMAILFROM -t
- fi
+jsonString+='"embeds": [{';
+jsonString+="\"title\": \"[$STAT] $HN\",";
+if [ "$STATE" == "6" ]; then
+jsonString+='"color": 5552456,';
 fi
-rm $TEMPFILE
+if [ "$STATE" == "9" ]; then
+jsonString+='"color": 11254088,';
+fi
+if [ "$STATE" == "7" ]; then
+jsonString+='"color": 12058624,';
+fi
+jsonString+="\"description\": \"$ERRLOG\",";
+jsonString+="\"author\": {\"name\": \"Veeam Agent for Linux $AGENT\"},"
+jsonString+="\"footer\": {\"text\": \"Vee-Cord Version $VERSION\"},"
+jsonString+='"fields": [';
+jsonString+="{\"name\": \"End time\",\"value\": \"$ETIME\",\"inline\": true},";
+jsonString+="{\"name\": \"Data read\",\"value\": \"$READ\",\"inline\": true},";
+jsonString+="{\"name\": \"Bottleneck\",\"value\": \"$BOTTLENECK\",\"inline\": true}";
+jsonString+="]}]";
+jsonString+="}";
+
+
+echo $jsonString
+
+
+curl -i -H "Accept: application/json" -H "Content-Type:application/json" -X POST --data "$(echo $jsonString)" "$WEBHOOKURL"
 
 exit
