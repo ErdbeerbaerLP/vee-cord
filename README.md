@@ -30,5 +30,8 @@ You can use the vee-cord script as a post-backup script directly in veeam (Confi
 
 # Release notes
 
+## Version 0.0.2
+- Added more embed elements
+
 ## Version 0.0.1
 - Initial release
