@@ -17,10 +17,10 @@ Webhook POST Requests are done using curl, so curl is necessary here
 
 # Install
 
-git clone https://github.com/ErdbeerbaerLP/vee-cord
-move the directory "vee-cord" to /opt or any other directory you would like to install it into
-change vee-cord.config file to your needs.  
-chmod +x vee-cord.sh
+- `git clone https://github.com/ErdbeerbaerLP/vee-cord`
+- move the directory "vee-cord" to /opt or any other directory you would like to install it into
+- change `vee-cord.config` file to your needs.
+- `chmod +x vee-cord.sh`
 
 # Use
 
