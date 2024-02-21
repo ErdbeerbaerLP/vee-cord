@@ -7,6 +7,8 @@ vee-cord uses the sqlite database which get's filled from Veeam Agent for Linux 
 The Linux version from Veeam Agent does not send notification e-mails like the windows version.
 So this script reads the data from the sqlite database and sends it over discord to you.
 
+![Example Image](https://github.com/ErdbeerbaerLP/vee-cord/assets/27149563/c2b819cc-4bdc-406f-919f-bb0dc1e5fc9c)
+
 # Dependencies
 
 veeam  
