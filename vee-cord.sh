@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.0.1
+VERSION=0.0.2
 HDIR=$(dirname "$0")
 DEBUG=0
 INFOSEND=1
@@ -277,7 +277,7 @@ else
 jsonString+="\"content\":null,";
 fi
 jsonString+='"embeds": [{';
-jsonString+="\"title\": \"[$STAT] $HN\",";
+jsonString+="\"title\": \"[$STAT] $JOBNAME @ $HN\",";
 if [ "$STATE" == "6" ]; then
 jsonString+='"color": 5552456,';
 fi
@@ -290,10 +290,23 @@ fi
 jsonString+="\"description\": \"$ERRLOG\",";
 jsonString+="\"author\": {\"name\": \"Veeam Agent for Linux $AGENT\"},"
 jsonString+="\"footer\": {\"text\": \"Vee-Cord Version $VERSION\"},"
+if [ ! -z $WEBHOOKTHUMBNAIL ]; then
+jsonString+="\"thumbnail\": {\"url\": \"$WEBHOOKTHUMBNAIL\"},"
+fi
 jsonString+='"fields": [';
-jsonString+="{\"name\": \"End time\",\"value\": \"$ETIME\",\"inline\": true},";
+jsonString+="{\"name\": \"Duration\",\"value\": \"$DURATION\",\"inline\": true},";
+jsonString+="{\"name\": \"Size\",\"value\": \"$PROCESSED\",\"inline\": true},";
 jsonString+="{\"name\": \"Data read\",\"value\": \"$READ\",\"inline\": true},";
+jsonString+="{\"name\": \"Data transferred\",\"value\": \"$TRANSFERRED\",\"inline\": true},";
+jsonString+="{\"name\": \"Processing Rate\",\"value\": \"$SPEED MB/s\",\"inline\": true},";
 jsonString+="{\"name\": \"Bottleneck\",\"value\": \"$BOTTLENECK\",\"inline\": true}";
+if [ ! -z "$DEVSIZE" ]; then
+jsonString+=",{\"name\": \"\u200b\",\"value\": \"Backup Target\",\"inline\": false},";
+jsonString+="{\"name\": \"Disk Size\",\"value\": \"$DEVSIZE\",\"inline\": false},";
+jsonString+="{\"name\": \"Disk Used\",\"value\": \"$DEVUSED\",\"inline\": true},";
+jsonString+="{\"name\": \"Disk available\",\"value\": \"$DEVAVAIL\",\"inline\": true},";
+jsonString+="{\"name\": \"Disk used %\",\"value\": \"$DEVUSEP\",\"inline\": true}";
+fi
 jsonString+="]}]";
 jsonString+="}";
 
