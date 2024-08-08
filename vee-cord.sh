@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.0.2
+VERSION=0.0.3
 HDIR=$(dirname "$0")
 DEBUG=0
 INFOSEND=1
@@ -24,7 +24,7 @@ fi
 
 STARTEDFROM=$(ps -p $PPID -hco cmd)
 if [ "$1" == "--bg" ]; then
- if [ "$STARTEDFROM" == "veeamjobman" ]; then
+ if [[ "$STARTEDFROM" == "veeamjobman" || "$STARTEDFROM" == "systemd" || "$2" == "--custom_script_veeam_override" ]]; then
   logger -t vee-cord "waiting for 30 seconds"
   sleep $SLEEP
  fi
@@ -66,16 +66,16 @@ if [ $SKIPVERSIONCHECK -ne 1 ]; then
    HIGHESTVERSION=$(echo -e "$VERSION\n$AKTVERSION" | sort -rV | head -n1)
    if [ "$VERSION" != "$HIGHESTVERSION" ]; then
     logger -t vee-cord "new Vee-Cord version $AKTVERSION available"
-    AKTVERSION="\(new Vee-Cord version $AKTVERSION available\)"
+    AKTVERSION="(new Vee-Cord version $AKTVERSION available)"
    else
     AKTVERSION=""
    fi
   fi
  else
-  AKTVERSION="\(you need curl to use the upgrade check, please install\)"
+  AKTVERSION="(you need curl to use the upgrade check, please install)"
  fi
 else
- VERSION="$VERSION \(upgrade check disabled\)"
+ VERSION="$VERSION (upgrade check disabled)"
 fi
 
 AGENT=$($VC -v)
@@ -159,8 +159,8 @@ if [ "$JOBID" ]; then
  fi
 fi
 
-if [ ! "$1" == "--bg" ] && [ "$STARTEDFROM" == "veeamjobman" ]; then 
- nohup $0 --bg >/dev/null 2>/dev/null &
+if [ ! "$1" == "--bg" ] && [[ "$STARTEDFROM" == "veeamjobman" || "$STARTEDFROM" == "systemd" || "$1" == "--custom_script_veeam_override" ]]; then 
+ nohup $0 --bg $1 >/dev/null 2>/dev/null &
  exit
 fi
 
