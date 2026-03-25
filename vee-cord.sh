@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=0.0.3
+VERSION=0.0.4
 HDIR=$(dirname "$0")
 DEBUG=0
 INFOSEND=1
@@ -37,7 +37,21 @@ if [ ! "$VC" ]; then
  exit
 fi
 
-VV=$(veeamconfig -v|cut -c2)
+# Veeam version number (extract major version, e.g. "6" from "v6.0.0.0" or "13" from "v13.0.0.0")
+VV_FULL=$(veeamconfig -v 2>/dev/null)
+if [ -z "$VV_FULL" ]; then
+ echo "No connection to veeamservice!"
+ logger -t vee-mail "No connection to veeamservice!"
+ exit 1
+fi
+# Extract version number after 'v' until first dot
+VV=$(echo "$VV_FULL" | sed -n 's/^v\([0-9]\+\)\..*$/\1/p')
+if [ -z "$VV" ]; then
+ echo "Could not parse Veeam version from: $VV_FULL"
+ logger -t vee-mail "Could not parse Veeam version from: $VV_FULL"
+ exit 1
+fi
+
 
 YUM=$(which yum)
 
@@ -90,10 +104,11 @@ SESSID=${SESSID:1:${#SESSID}-2}
 # state 1=Running, 6=Success, 7=Failed, 9=Warning
 # get data from sqlite db
 if [ $VV -ge 6 ]; then
- SESSDATA=$(sqlite3 /var/lib/veeam/veeam_db.sqlite  "select start_time_utc, end_time_utc, state, progress_details, job_id, job_name from JobSessions order by start_time_utc DESC limit 1;")
+ SESSDATA=$(sqlite3 /var/lib/veeam/veeam_db.sqlite  "select start_time_utc, end_time_utc, state, progress_details, job_id, job_name, details from JobSessions order by start_time_utc DESC limit 1;")
 else
- SESSDATA=$(sqlite3 /var/lib/veeam/veeam_db.sqlite  "select start_time, end_time, state, progress_details, job_id, job_name from JobSessions order by start_time DESC limit 1;")
+ SESSDATA=$(sqlite3 /var/lib/veeam/veeam_db.sqlite  "select start_time, end_time, state, progress_details, job_id, job_name, details from JobSessions order by start_time DESC limit 1;")
 fi
+
 
 STARTTIME=$(echo $SESSDATA|awk -F'|' '{print $1}')
 ENDTIME=$(echo $SESSDATA|awk -F'|' '{print $2}')
@@ -101,6 +116,17 @@ STATE=$(echo $SESSDATA|awk -F'|' '{print $3}')
 DETAILS=$(echo $SESSDATA|awk -F'|' '{print $4}')
 JOBID=$(echo $SESSDATA|awk -F'|' '{print $5}')
 JOBNAME=$(echo $SESSDATA|awk -F'|' '{print $6}')
+DETAILSFIELD=$( echo "$SESSDATA" | awk -F'|' '{print $8}')
+
+
+BACKUPTYPE=$(echo "$DETAILSFIELD" | awk -F'backup_type="' '{print $2}' | awk -F'"' '{print $1}')
+if [ "$BACKUPTYPE" == "Full" ]; then
+  BACKUPTYPEDISPLAY="Full"
+elif [ "$BACKUPTYPE" == "Increment" ]; then
+  BACKUPTYPEDISPLAY="Incremental"
+else
+  BACKUPTYPEDISPLAY=""
+fi
 
 if [ $DEBUG -gt 0 ]; then
  echo -e -n "STARTTIME: $STARTTIME, ENDTIME: $ENDTIME, STATE: $STATE, JOBID: $JOBID, JOBNAME: $JOBNAME\nDETAILS: $DETAILS\n"
@@ -294,6 +320,7 @@ if [ ! -z $WEBHOOKTHUMBNAIL ]; then
 jsonString+="\"thumbnail\": {\"url\": \"$WEBHOOKTHUMBNAIL\"},"
 fi
 jsonString+='"fields": [';
+jsonString+="{\"name\": \"Type\",\"value\": \"$BACKUPTYPEDISPLAY\",\"inline\": true},";
 jsonString+="{\"name\": \"Duration\",\"value\": \"$DURATION\",\"inline\": true},";
 jsonString+="{\"name\": \"Size\",\"value\": \"$PROCESSED\",\"inline\": true},";
 jsonString+="{\"name\": \"Data read\",\"value\": \"$READ\",\"inline\": true},";
