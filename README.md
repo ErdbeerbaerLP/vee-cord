@@ -33,6 +33,9 @@ You can use the vee-cord script as a post-backup script directly in veeam (Confi
 If you want to use it in an custom post-backup script, make the script run /opt/vee-cord/vee-cord.sh --custom_script_veeam_override
 
 # Release notes
+## Version 0.0.4
+- Fix for veeam 13+
+- Add backup type field (Full/Incremental)
 
 ## Version 0.0.2
 - Fix a few bugs
